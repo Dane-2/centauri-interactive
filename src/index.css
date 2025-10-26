@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base styles: mostly white site with black accents */
+@layer base {
+  html, body, #root {
+    @apply h-full bg-white text-black;
+  }
+  body {
+    @apply antialiased;
+  }
+  ::selection {
+    background: #000; /* black */
+    color: #fff;      /* white */
+  }
+}
+
+/* Simple container helper (we'll also make a React <Container/> later) */
+@layer utilities {
+  .container-page {
+    @apply mx-auto max-w-6xl px-4;
+  }
+}
