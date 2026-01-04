@@ -1,100 +1,230 @@
 import * as THREE from "three";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Line, OrbitControls } from "@react-three/drei";
-import { useMemo, useRef, useState } from "react";
+import { OrbitControls, useTexture } from "@react-three/drei";
+import { useRef, useState, useMemo } from "react";
 
-/** Centauri Interactive — minimalist 3D constellation
+/** Centauri Interactive — Twin Stars Orbiting
+ * Two stars orbiting around their common center of mass (barycenter)
  * Smooth continuous camera orbit that blends with user drag.
  */
 
-const NODES = [
-  { id: 1, p: [-1.2, -0.9, -0.25] },
-  { id: 2, p: [-0.8, -0.35, 0.3] },
-  { id: 5, p: [-0.35, -0.05, -0.1] },
-  { id: 7, p: [-0.55, 0.1, 0.35] },
-  { id: 11, p: [-0.15, 0.55, -0.2] },
-  { id: 12, p: [-0.15, 0.25, 0.25] },
-  { id: 3, p: [-0.25, 0.85, 0.1] },
-  { id: 9, p: [0.2, 0.9, -0.3] },
-  { id: 4, p: [0.4, 0.25, 0.28] },
-  { id: 8, p: [0.65, 0.15, -0.22] },
-  { id: 13, p: [0.85, -0.25, 0.18] },
-  { id: 14, p: [0.48, 0.05, -0.26] },
-  { id: 6, p: [-0.75, 0.35, 0.22] },
-  { id: 10, p: [-1.05, 0.3, -0.18] },
-];
+// Create a procedural star texture (fallback if no image provided)
+function createStarTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext("2d");
 
-const EDGES = [
-  [1, 2],
-  [2, 5],
-  [5, 7],
-  [7, 11],
-  [11, 9],
-  [7, 12],
-  [12, 11],
-  [7, 4],
-  [4, 8],
-  [8, 13],
-  [4, 14],
-  [14, 8],
-  [6, 10],
-  [6, 7],
-  [3, 11],
-];
+  // Create radial gradient for star glow
+  const gradient = ctx.createRadialGradient(256, 256, 0, 256, 256, 256);
+  gradient.addColorStop(0, "rgba(0, 0, 0, 1)");
+  gradient.addColorStop(0.2, "rgba(0, 0, 0, 0.95)");
+  gradient.addColorStop(0.4, "rgba(0, 0, 0, 0.7)");
+  gradient.addColorStop(0.7, "rgba(0, 0, 0, 0.3)");
+  gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
 
-const byId = Object.fromEntries(NODES.map((n) => [n.id, n]));
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 512, 512);
 
-function Node({ id, position, active, setActive }) {
-  const ref = useRef();
-  const BASE = 0.022;
-  const HOVER_SCALE = active === id ? 1.2 : 1.0;
+  // Add bright center core
+  const centerGradient = ctx.createRadialGradient(256, 256, 0, 256, 256, 30);
+  centerGradient.addColorStop(0, "rgba(0, 0, 0, 1)");
+  centerGradient.addColorStop(0.5, "rgba(0, 0, 0, 0.8)");
+  centerGradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = centerGradient;
+  ctx.fillRect(0, 0, 512, 512);
 
-  useFrame(() => {
-    if (!ref.current) return;
-    const t = performance.now() * 0.001 + id;
-    ref.current.scale.setScalar(HOVER_SCALE * (1 + Math.sin(t) * 0.007));
+  // Add some texture variation
+  for (let i = 0; i < 20; i++) {
+    const x = 256 + (Math.random() - 0.5) * 100;
+    const y = 256 + (Math.random() - 0.5) * 100;
+    const r = Math.random() * 10 + 5;
+    const spotGradient = ctx.createRadialGradient(x, y, 0, x, y, r);
+    spotGradient.addColorStop(0, "rgba(0, 0, 0, 0.3)");
+    spotGradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = spotGradient;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+
+  return new THREE.CanvasTexture(canvas);
+}
+
+function TwinStar({ 
+  id, 
+  orbitRadius, 
+  orbitSpeed, 
+  phaseOffset, 
+  size, 
+  active, 
+  setActive,
+  sharedTimeRef,
+  starImagePath = null // Optional: path to star image
+}) {
+  const starRef = useRef();
+  const glowRef = useRef();
+  const groupRef = useRef();
+  const HOVER_SCALE = active === id ? 1.4 : 1.0;
+
+  // Use image texture if provided, otherwise use procedural texture
+  const starTexture = starImagePath 
+    ? useTexture(starImagePath)
+    : useMemo(() => createStarTexture(), []);
+  
+  // Configure texture if using image
+  if (starImagePath && starTexture) {
+    starTexture.wrapS = THREE.RepeatWrapping;
+    starTexture.wrapT = THREE.RepeatWrapping;
+    starTexture.minFilter = THREE.LinearFilter;
+    starTexture.magFilter = THREE.LinearFilter;
+  }
+
+  useFrame((state, delta) => {
+    if (!groupRef.current || !sharedTimeRef) return;
+    
+    // Use shared time reference for synchronization
+    const time = sharedTimeRef.current * orbitSpeed;
+    
+    // Orbital motion in a plane (circular orbit)
+    const x = Math.cos(time + phaseOffset) * orbitRadius;
+    const y = Math.sin(time + phaseOffset) * orbitRadius;
+    const z = 0; // Keep them in the same plane
+    
+    groupRef.current.position.set(x, y, z);
+    
+    // Subtle pulsing animation
+    const t = performance.now() * 0.001;
+    const pulse = 1 + Math.sin(t * 2 + id) * 0.05;
+    
+    if (starRef.current) {
+      starRef.current.scale.setScalar(HOVER_SCALE * size * pulse);
+    }
+    if (glowRef.current) {
+      glowRef.current.scale.setScalar(HOVER_SCALE * size * pulse * 1.8);
+      glowRef.current.material.opacity = 0.2 + Math.sin(t * 3 + id) * 0.1;
+    }
   });
 
   return (
-    <group
-      position={position}
-      onPointerOver={(e) => {
-        e.stopPropagation();
-        setActive(id);
-      }}
-      onPointerOut={(e) => {
-        e.stopPropagation();
-        setActive(null);
-      }}
-    >
-      <mesh ref={ref}>
-        <sphereGeometry args={[BASE, 24, 24]} />
-        <meshBasicMaterial color="black" />
+    <group ref={groupRef}>
+      {/* Outer glow */}
+      <mesh ref={glowRef}>
+        <sphereGeometry args={[1, 16, 16]} />
+        <meshBasicMaterial 
+          color="black" 
+          opacity={0.2} 
+          transparent 
+          blending={THREE.AdditiveBlending}
+        />
+      </mesh>
+      
+      {/* Main star with texture */}
+      <mesh
+        ref={starRef}
+        onPointerOver={(e) => {
+          e.stopPropagation();
+          setActive(id);
+        }}
+        onPointerOut={(e) => {
+          e.stopPropagation();
+          setActive(null);
+        }}
+      >
+        <sphereGeometry args={[1, 32, 32]} />
+        <meshBasicMaterial 
+          map={starTexture}
+          transparent
+          opacity={0.95}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      
+      {/* Bright center core - solid black center */}
+      <mesh>
+        <sphereGeometry args={[0.25, 16, 16]} />
+        <meshBasicMaterial 
+          color="black" 
+          opacity={1}
+        />
+      </mesh>
+      
+      {/* Additional inner glow layer */}
+      <mesh>
+        <sphereGeometry args={[0.6, 16, 16]} />
+        <meshBasicMaterial 
+          color="black" 
+          opacity={0.4}
+          transparent
+          blending={THREE.AdditiveBlending}
+        />
       </mesh>
     </group>
+  );
+}
+
+function ConnectionLine({ orbitRadius, orbitSpeed, sharedTimeRef, active }) {
+  const lineRef = useRef();
+  const geometryRef = useRef(new THREE.BufferGeometry());
+  
+  useFrame(() => {
+    if (!lineRef.current || !sharedTimeRef) return;
+    
+    const time = sharedTimeRef.current * orbitSpeed;
+    
+    // Calculate star positions (same as in TwinStar)
+    const pos1 = [
+      Math.cos(time) * orbitRadius,
+      Math.sin(time) * orbitRadius,
+      0,
+    ];
+    const pos2 = [
+      Math.cos(time + Math.PI) * orbitRadius,
+      Math.sin(time + Math.PI) * orbitRadius,
+      0,
+    ];
+    
+    geometryRef.current.setFromPoints([
+      new THREE.Vector3(...pos1),
+      new THREE.Vector3(...pos2),
+    ]);
+    geometryRef.current.attributes.position.needsUpdate = true;
+  });
+
+  return (
+    <line ref={lineRef} geometry={geometryRef.current}>
+      <lineBasicMaterial 
+        color="black" 
+        opacity={active ? 0.3 : 0.2} 
+        transparent 
+        linewidth={2}
+      />
+    </line>
   );
 }
 
 function ConstellationScene() {
   const [active, setActive] = useState(null);
   const controlsRef = useRef();
-  const angleRef = useRef(0); // persistent orbit angle
+  const angleRef = useRef(0);
   const [dragging, setDragging] = useState(false);
-
-  const lines = useMemo(() => {
-    return EDGES.map(([a, b]) => {
-      const pa = byId[a].p,
-        pb = byId[b].p;
-      return [new THREE.Vector3(...pa), new THREE.Vector3(...pb)];
-    });
-  }, []);
+  
+  // Shared time reference for synchronizing stars and connection line
+  const sharedTimeRef = useRef(0);
 
   const prefersReduced =
     typeof window !== "undefined" &&
     window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
 
+  // Orbit parameters
+  const ORBIT_RADIUS = 0.6; // Distance from center
+  const ORBIT_SPEED = 0.3; // Speed of orbit
+  const STAR_SIZE_1 = 0.04;
+  const STAR_SIZE_2 = 0.04;
+
   useFrame(({ camera }, delta) => {
     if (prefersReduced) return;
+
+    // Update shared time for star synchronization
+    sharedTimeRef.current += delta;
 
     if (!dragging) {
       // Continuous orbit based on last known angle
@@ -102,7 +232,7 @@ function ConstellationScene() {
       const R = 4.4;
       camera.position.x = Math.sin(angleRef.current) * R;
       camera.position.z = Math.cos(angleRef.current) * R;
-      camera.lookAt(0, 0.25, 0);
+      camera.lookAt(0, 0, 0);
     } else if (controlsRef.current) {
       // While dragging, keep track of the current azimuthal angle
       angleRef.current = controlsRef.current.getAzimuthalAngle();
@@ -113,20 +243,38 @@ function ConstellationScene() {
     <>
       <color attach="background" args={["white"]} />
 
-      <group scale={1.05}>
-        {lines.map((pts, i) => (
-          <Line
-            key={i}
-            points={pts}
-            color="black"
-            lineWidth={1}
-            transparent
-            opacity={active ? 0.22 : 0.26}
-          />
-        ))}
-        {NODES.map((n) => (
-          <Node key={n.id} id={n.id} position={n.p} active={active} setActive={setActive} />
-        ))}
+      <group scale={1.2}>
+        {/* Connection line between stars */}
+        <ConnectionLine 
+          orbitRadius={ORBIT_RADIUS}
+          orbitSpeed={ORBIT_SPEED}
+          sharedTimeRef={sharedTimeRef}
+          active={active !== null}
+        />
+        
+        {/* Twin stars orbiting each other */}
+        <TwinStar
+          id={1}
+          orbitRadius={ORBIT_RADIUS}
+          orbitSpeed={ORBIT_SPEED}
+          phaseOffset={0}
+          size={STAR_SIZE_1}
+          active={active === 1}
+          setActive={setActive}
+          sharedTimeRef={sharedTimeRef}
+          // starImagePath="/path/to/star-image.png" // Uncomment and add path to use custom image
+        />
+        <TwinStar
+          id={2}
+          orbitRadius={ORBIT_RADIUS}
+          orbitSpeed={ORBIT_SPEED}
+          phaseOffset={Math.PI} // Opposite phase (180 degrees)
+          size={STAR_SIZE_2}
+          active={active === 2}
+          setActive={setActive}
+          sharedTimeRef={sharedTimeRef}
+          // starImagePath="/path/to/star-image.png" // Uncomment and add path to use custom image
+        />
       </group>
 
       {/* Controls enabled: camera orbit resumes smoothly after drag */}
@@ -137,7 +285,7 @@ function ConstellationScene() {
         rotateSpeed={0.28}
         minPolarAngle={0}
         maxPolarAngle={Math.PI}
-        target={[0, 0.25, 0]}
+        target={[0, 0, 0]}
         onStart={() => setDragging(true)}
         onEnd={() => setDragging(false)}
       />

@@ -18,8 +18,8 @@ export default function App() {
       <Header />
 
       {/* Main content */}
-      <main id="main" className="min-h-[80vh]">
-        <Container className="py-12">
+      <main id="main" className="min-h-[80vh] bg-transparent">
+        <Container className="py-0">
           <Outlet />
         </Container>
       </main>

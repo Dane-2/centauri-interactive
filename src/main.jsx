@@ -10,7 +10,7 @@ import App from "./App";
 import Home from "./pages/Home";
 import Apps from "./pages/Apps";
 import About from "./pages/About";
-import Essence from "./pages/apps/Essence"; // ✅ import Essence page
+import Outfitted from "./pages/apps/Outfitted";
 import "./index.css";
 
 const router = createBrowserRouter(
@@ -18,7 +18,7 @@ const router = createBrowserRouter(
     <Route path="/" element={<App />}>
       <Route index element={<Home />} />
       <Route path="apps" element={<Apps />} />
-      <Route path="apps/essence" element={<Essence />} /> {/* ✅ new route */}
+      <Route path="apps/outfitted" element={<Outfitted />} />
       <Route path="about" element={<About />} />
     </Route>
   )
